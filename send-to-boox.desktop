@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Send to BOOX
+Comment=Copy PDFs to BOOX over USB and open them
+Exec=send-to-boox %F
+Icon=tablet
+Terminal=false
+MimeType=application/pdf;
+Categories=Utility;
+StartupNotify=false
