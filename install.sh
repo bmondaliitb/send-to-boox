@@ -28,8 +28,8 @@ executable=${executable//\\/\\\\}
 executable=${executable//%/%%}
 launcher=$applications/send-to-boox.desktop
 while IFS= read -r line; do
-    if [[ $line == Exec=* ]]; then
-        printf 'Exec="%s" %%F\n' "$executable"
+    if [[ $line == 'Exec=send-to-boox '* ]]; then
+        printf 'Exec="%s" %s\n' "$executable" "${line#Exec=send-to-boox }"
     else
         printf '%s\n' "$line"
     fi
@@ -43,4 +43,6 @@ fi
 printf '%s\n' 'Installed Send to BOOX.' \
     'Desktop drop support depends on your icon extension; try dropping a PDF.' \
     'Fallback: right-click PDF → Open With → Send to BOOX (look under All Applications).' \
-    'You can also double-click the icon to choose a PDF.'
+    'Double-click the icon to send a PDF, send a webpage, or set up / connect wireless.' \
+    'For webpages: right-click the launcher → Send webpage, then paste the URL.' \
+    'For home Wi-Fi: double-click the icon → Set up / connect wireless.'

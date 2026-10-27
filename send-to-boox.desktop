@@ -1,10 +1,19 @@
 [Desktop Entry]
 Type=Application
 Name=Send to BOOX
-Comment=Copy PDFs to BOOX over USB and open them
-Exec=send-to-boox %F
+Comment=Send PDFs and webpage links to BOOX over USB or home Wi-Fi
+Exec=send-to-boox %U
 Icon=tablet
 Terminal=false
 MimeType=application/pdf;
 Categories=Utility;
 StartupNotify=false
+Actions=SendWebpage;SetupWireless;
+
+[Desktop Action SendWebpage]
+Name=Send webpage
+Exec=send-to-boox --link
+
+[Desktop Action SetupWireless]
+Name=Set up / connect wireless
+Exec=send-to-boox --setup-wireless
