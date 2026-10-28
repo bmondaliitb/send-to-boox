@@ -25,28 +25,47 @@ update an existing installation.
 
 The launcher now uses `%U` so drops can pass both URLs and local PDF file URIs.
 
-**Easy wireless setup / reconnect:** rerun `bash install.sh`, then:
+**Guided connection setup:** rerun `bash install.sh`, then open
+**Send to BOOX → Set up / connect wireless**. All connection steps run in
+graphical dialogs; no terminal commands are needed during setup.
 
-1. Connect laptop and BOOX to your home network. For first-time setup, connect
-   BOOX by USB and accept its debugging authorization prompt.
-2. Double-click **Send to BOOX → Set up / connect wireless**.
-3. Confirm the suggested BOOX IP and click **Connect**. Setup tries to detect
-   the IP over USB, otherwise remembers your last address; if blank, enter
-   the address shown in BOOX's Wi-Fi settings.
-4. When the success dialog appears, unplug USB and send normally.
+1. Select your trusted home network and connect BOOX to the same network.
+2. Choose an existing wireless connection, wireless pairing, or USB setup.
+3. Follow the instructions on screen. USB setup checks authorization and detects
+   the Wi-Fi address when possible. Wireless pairing asks for the pairing address
+   and six-digit code, then the separate connection address on the main Wireless
+   debugging screen.
+4. If a step fails, correct the address and retry, or return to choose another
+   method. The help option explains hidden developer settings and can open
+   Android About device or Developer options over authorized USB.
+5. Once the connection is verified, unplug USB and send normally.
 
-Setup remembers the home connection (asks you to choose if ambiguous), enables
-TCP debugging over USB, and establishes and checks the wireless connection.
-The same menu reconnects later without USB if TCP debugging is still enabled.
-You can also access setup through the launcher's right-click action.
-USB is preferred; wireless is only used while the saved NetworkManager
-connection is active, and the BOOX serial is checked before sending.
+The wizard shows progress during connection and pairing. Cancel preserves the
+previous saved connection. If sending fails to connect, the same wizard is
+available immediately; the selected PDF or webpage waits until setup finishes.
+USB is preferred. Wireless sends are restricted to the saved NetworkManager
+profile and verify the BOOX serial number before sending.
 
-Wireless setup needs `nmcli` (standard on Ubuntu Desktop). BOOX may disable
-TCP debugging after reboot: reconnect USB and repeat setup. If its IP changes,
-repeat setup; a DHCP reservation in your router avoids this. Use TCP debugging
-only on a trusted home network. Settings are stored in
-`~/.config/send-to-boox/wireless` (or `$XDG_CONFIG_HOME/send-to-boox/wireless`).
+USB-based wireless access may be disabled by a BOOX reboot. Repeat USB setup
+when that happens. Android wireless pairing, if exposed by BOOX firmware, avoids
+USB for subsequent setup, but you may need to enable Wireless debugging after
+reboot. The app remembers the device serial and trusted network, discovers new
+connection addresses through ADB mDNS, and verifies the device before saving
+its new address. This also works after a computer restart. If the network blocks
+discovery, the wizard still accepts the current connection address manually.
+The pairing port is not the connection port. Remembering settings cannot turn
+Wireless debugging back on when BOOX firmware disables it.
+
+Wireless setup needs `nmcli` (standard on Ubuntu Desktop), `timeout`, and an ADB
+version supporting `adb pair` for pairing. Use only a trusted home network.
+Connection settings are saved in `~/.config/send-to-boox/wireless` (or
+`$XDG_CONFIG_HOME/send-to-boox/wireless`). Pairing codes are not saved by the app.
+
+Run the mocked connection-flow checks with:
+
+```bash
+python3 -m unittest discover -s tests -v
+```
 
 Desktop drops depend on the GNOME icon extension, not just Ubuntu's version.
 The DING code installed on the development machine (Ubuntu 26.04) includes
