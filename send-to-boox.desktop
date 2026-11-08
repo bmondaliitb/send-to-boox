@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=Send to BOOX
-Comment=Send PDFs and webpage links to BOOX over USB or home Wi-Fi
+Comment=Send PDFs and webpage links to BOOX over USB, Wi-Fi or Bluetooth
 Exec=send-to-boox %U
 Icon=tablet
 Terminal=false
@@ -15,5 +15,5 @@ Name=Send webpage
 Exec=send-to-boox --link
 
 [Desktop Action SetupWireless]
-Name=Set up / connect wireless
+Name=Connect BOOX — Wi-Fi or Bluetooth
 Exec=send-to-boox --setup-wireless

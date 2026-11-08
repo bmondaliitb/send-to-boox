@@ -43,6 +43,6 @@ fi
 printf '%s\n' 'Installed Send to BOOX.' \
     'Desktop drop support depends on your icon extension; try dropping a PDF.' \
     'Fallback: right-click PDF → Open With → Send to BOOX (look under All Applications).' \
-    'Double-click the icon to send a PDF, send a webpage, or set up / connect wireless.' \
+    'Double-click the icon to send a PDF, send a webpage, or connect over Wi-Fi or Bluetooth.' \
     'For webpages: right-click the launcher → Send webpage, then paste the URL.' \
-    'For home Wi-Fi: double-click the icon → Set up / connect wireless.'
+    'For Wi-Fi or Bluetooth: double-click the icon → Connect BOOX — Wi-Fi or Bluetooth.'

@@ -26,8 +26,10 @@ update an existing installation.
 The launcher now uses `%U` so drops can pass both URLs and local PDF file URIs.
 
 **Guided connection setup:** rerun `bash install.sh`, then open
-**Send to BOOX → Set up / connect wireless**. All connection steps run in
+**Send to BOOX → Connect BOOX — Wi-Fi or Bluetooth**. All connection steps run in
 graphical dialogs; no terminal commands are needed during setup.
+
+For Wi-Fi:
 
 1. Select your trusted home network and connect BOOX to the same network.
 2. Choose an existing wireless connection, wireless pairing, or USB setup.
@@ -43,7 +45,7 @@ graphical dialogs; no terminal commands are needed during setup.
 The wizard shows progress during connection and pairing. Cancel preserves the
 previous saved connection. If sending fails to connect, the same wizard is
 available immediately; the selected PDF or webpage waits until setup finishes.
-USB is preferred. Wireless sends are restricted to the saved NetworkManager
+USB is preferred. Wi-Fi sends are restricted to the saved NetworkManager
 profile and verify the BOOX serial number before sending.
 
 USB-based wireless access may be disabled by a BOOX reboot. Repeat USB setup
@@ -60,6 +62,33 @@ Wireless setup needs `nmcli` (standard on Ubuntu Desktop), `timeout`, and an ADB
 version supporting `adb pair` for pairing. Use only a trusted home network.
 Connection settings are saved in `~/.config/send-to-boox/wireless` (or
 `$XDG_CONFIG_HOME/send-to-boox/wireless`). Pairing codes are not saved by the app.
+
+
+**Bluetooth (keep your usual Wi-Fi internet):** choose **Bluetooth — keep my
+regular Wi-Fi internet** in the connection wizard. Pair BOOX in Linux Bluetooth
+settings (the wizard can open them), enable **Bluetooth tethering** on BOOX,
+or connect an authorized USB cable and choose **Open BOOX tethering settings via
+USB** to open that page. Enable the switch on BOOX, then
+select it from the paired-device list, and connect an authorized USB cable for
+the initial setup. The wizard detects its address and checks that it matches
+the USB device before saving. No IP address or terminal commands are needed.
+If BOOX does not offer Bluetooth tethering, use Wi-Fi or USB instead; ordinary
+Bluetooth pairing is insufficient.
+
+The app creates a dedicated NetworkManager Bluetooth PAN profile with automatic
+connection disabled, internet routes disabled for IPv4 and IPv6, and automatic
+DNS and extra DHCP routes ignored. Your existing Wi-Fi profile is unchanged.
+On subsequent sends, it activates the saved Bluetooth profile, detects the
+current address, checks the route uses that interface, and verifies BOOX's
+serial number. Keep BOOX awake with Bluetooth tethering enabled. After a BOOX
+reboot, repeat USB setup if ADB has been disabled. Bluetooth transfers are slower
+than Wi-Fi; opening a webpage still requires internet on BOOX.
+
+Bluetooth setup additionally requires `bluez` and `iproute2` (usually installed
+on Ubuntu Desktop). Failed setup removes its newly created network profile;
+cancelling preserves the previously saved BOOX connection. A successful profile
+can be removed later in Linux Network settings. Hardware Bluetooth compatibility
+must be verified on your BOOX model.
 
 Run the mocked connection-flow checks with:
 

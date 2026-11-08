@@ -22,7 +22,7 @@ if (( $# == 0 )); then
     action=$(zenity --list --title='Send to BOOX' --text='What would you like to do?' \
         --column=Action --column=Description --hide-column=1 --print-column=1 \
         pdf 'Send a PDF' link 'Send a webpage' \
-        setup-wireless 'Set up / connect wireless') || exit 0
+        setup-wireless 'Connect BOOX — Wi-Fi or Bluetooth') || exit 0
     [[ -n $action ]] || exit 0
     set -- "--$action"
 fi
@@ -83,11 +83,143 @@ save_connection() {
     local temporary
     mkdir -p -- "${config%/*}" || return 1
     temporary=$(mktemp "${config}.XXXXXX") || return 1
-    if ! printf '%s\n' "$network" "$endpoint" "$identity" > "$temporary" ||
+    if ! { printf '%s\n' "$network" "$endpoint" "$identity";
+        [[ ${transport:-wifi} != bluetooth ]] || printf 'bluetooth\n';
+        true;
+    } > "$temporary" ||
         ! mv -- "$temporary" "$config"; then
         rm -f -- "$temporary"
         return 1
     fi
+}
+
+# Dedicated PAN profiles never provide internet routes or DNS to the computer.
+bluetooth_up() {
+    local output guards
+    [[ $(nmcli -g connection.type connection show uuid "$network") == bluetooth ]] || return 1
+    guards=$(nmcli -g ipv4.never-default,ipv6.never-default,ipv4.ignore-auto-dns,ipv6.ignore-auto-dns,ipv4.ignore-auto-routes,ipv6.ignore-auto-routes connection show uuid "$network") || return 1
+    # Bringing an active PAN profile up again tears down the link and ADB.
+    # Reuse profiles already configured with our route and DNS protections.
+    if [[ $guards == $'yes\nyes\nyes\nyes\nyes\nyes' &&
+          $(nmcli -g GENERAL.STATE connection show uuid "$network") == activated ]]; then
+        return 0
+    fi
+    nmcli connection modify uuid "$network" connection.autoconnect no \
+        ipv4.never-default yes ipv6.never-default yes \
+        ipv4.ignore-auto-dns yes ipv6.ignore-auto-dns yes \
+        ipv4.ignore-auto-routes yes ipv6.ignore-auto-routes yes >/dev/null || return 1
+    # Activate an inactive profile, or apply missing route/DNS protections.
+    output=$(progress_run 'Connecting to BOOX over Bluetooth…' \
+        nmcli --wait 25 connection up uuid "$network") || {
+        connection_error=$output
+        return 1
+    }
+}
+bluetooth_endpoint() {
+    local gateway interface route option
+    gateway=$(nmcli -g IP4.GATEWAY connection show uuid "$network") || return 1
+    # With never-default, NM may omit IP4.GATEWAY. The DHCP router is
+    # still the Android tethering endpoint; do not install it as a route.
+    if [[ -z $gateway || $gateway == -- ]]; then
+        while IFS= read -r option; do
+            # nmcli versions return options on separate lines or joined by |.
+            if [[ $option =~ (^|[|])[[:space:]]*routers[[:space:]]*=[[:space:]]*([0-9.]+) ]]; then
+                gateway=${BASH_REMATCH[2]}
+                break
+            fi
+        done < <(nmcli -g DHCP4.OPTION connection show uuid "$network")
+    fi
+    endpoint=$gateway:5555
+    valid_endpoint "$endpoint" || return 1
+    # Bluetooth GENERAL.DEVICES is the remote MAC, not the IP interface.
+    interface=$(nmcli -g GENERAL.IP-IFACE connection show uuid "$network") || return 1
+    [[ -n $interface && $interface != *$'\n'* ]] || return 1
+    route=$(ip -4 route get "$gateway") || return 1
+    [[ " $route " == *" dev $interface "* ]] || return 1
+}
+setup_bluetooth() {
+    local network endpoint identity transport=bluetooth output answer tag mac name expected
+    local -a devices=()
+    command -v bluetoothctl >/dev/null && command -v ip >/dev/null || {
+        notice 'Bluetooth setup needs BlueZ (bluetoothctl) and iproute2 (ip). Install them with your Linux package manager, then try again.'
+        return 1
+    }
+    while :; do
+        answer=$(choose 'Bluetooth setup — keep your usual Wi-Fi internet.\n\n1. Open Linux Bluetooth settings and pair with BOOX. Confirm the matching code on both devices.\n2. On BOOX, enable Bluetooth tethering (usually under Android network / hotspot settings).\n3. Keep BOOX awake.\n\nIf Bluetooth tethering is missing, this method is unavailable on your firmware. Use Wi-Fi setup instead.' \
+            ready 'Paired and tethering enabled — continue' settings 'Open Linux Bluetooth settings' \
+            tether 'Open BOOX tethering settings via USB' back 'Back to Wi-Fi setup') || return 1
+        case $answer in
+            tether)
+                if [[ $(timeout 5 adb -d get-state 2>/dev/null) != device ]]; then
+                    notice 'Connect only your BOOX by USB, enable USB Debug Mode, unlock it, and accept “Allow USB debugging”. Then choose “Open BOOX tethering settings via USB” again.' || return 1
+                    continue
+                fi
+                if output=$(timeout 10 adb -d shell am start -a android.settings.TETHER_SETTINGS 2>&1) &&
+                    [[ $output != *Error* && $output != *Exception* && $output != *'unable to resolve'* ]]; then
+                    notice 'Check the BOOX screen and enable Bluetooth tethering. Then return here and choose “Paired and tethering enabled — continue”. If the Bluetooth tethering switch is missing, your firmware may not support this method.' || return 1
+                elif output=$(timeout 10 adb -d shell am start -a android.settings.WIRELESS_SETTINGS 2>&1) &&
+                    [[ $output != *Error* && $output != *Exception* && $output != *'unable to resolve'* ]]; then
+                    notice 'The direct tethering page is unavailable. Check BOOX’s network settings for Hotspot / Tethering, then enable Bluetooth tethering. If it is absent, use Wi-Fi or USB instead.' || return 1
+                else
+                    notice "Could not open BOOX’s tethering or network settings. Look for Bluetooth tethering in BOOX Settings manually. If it is absent, use Wi-Fi or USB instead.\n\n$output" || return 1
+                fi
+                continue;;
+            settings)
+                if command -v gnome-control-center >/dev/null; then
+                    gnome-control-center bluetooth >/dev/null 2>&1 &
+                elif command -v blueman-manager >/dev/null; then
+                    blueman-manager >/dev/null 2>&1 &
+                else
+                    notice 'Open your desktop Settings app and choose Bluetooth to pair BOOX.' || return 1
+                fi
+                continue;;
+            ready) ;;
+            *) return 1;;
+        esac
+        devices=()
+        while read -r tag mac name; do
+            [[ $tag == Device && $mac =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]] || continue
+            devices+=("$mac" "$name")
+        done < <(timeout 5 bluetoothctl devices Paired)
+        if (( ! ${#devices[@]} )); then
+            notice 'No paired Bluetooth devices found. Turn on Bluetooth on both devices, pair BOOX in Linux Settings, then try again.' || return 1
+            continue
+        fi
+        mac=$(choose 'Select your paired BOOX:' "${devices[@]}") || return 1
+        [[ $mac =~ ^([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}$ ]] || return 1
+        while [[ $(timeout 5 adb -d get-state 2>/dev/null) != device ]]; do
+            answer=$(choose 'One-time USB setup\n\nConnect only your BOOX with a data-capable USB cable. Enable USB Debug Mode in BOOX App Management, unlock it, and accept “Allow USB debugging”.\n\nUSB enables ADB and verifies which BOOX will receive your files. A BOOX reboot may require this step again.' retry 'USB is ready — continue' back 'Back') || return 1
+            [[ $answer == retry ]] || return 1
+        done
+        expected=$(timeout 5 adb -d shell getprop ro.serialno) || return 1
+        expected=${expected//$'\r'/}
+        [[ -n $expected && $expected != *$'\n'* ]] || return 1
+        network=$(cat /proc/sys/kernel/random/uuid)
+        if ! output=$(nmcli connection add type bluetooth con-name "Send to BOOX ($mac)" \
+            connection.uuid "$network" autoconnect no bluetooth.type panu bluetooth.bdaddr "$mac" \
+            ipv4.method auto ipv6.method disabled ipv4.never-default yes ipv6.never-default yes \
+            ipv4.ignore-auto-dns yes ipv6.ignore-auto-dns yes \
+            ipv4.ignore-auto-routes yes ipv6.ignore-auto-routes yes 2>&1); then
+            notice "Could not create the Bluetooth connection.\n\n$output" || true
+            return 1
+        fi
+        connection_error='No usable Bluetooth network address was provided.'
+        if bluetooth_up && bluetooth_endpoint; then
+            if output=$(progress_run 'Enabling ADB using the USB cable…' timeout 15 adb -d tcpip 5555) && try_wireless; then
+                identity=$(timeout 5 adb -s "$endpoint" shell getprop ro.serialno) || identity=''
+                identity=${identity//$'\r'/}
+                if [[ $identity == "$expected" ]] && save_connection; then
+                    notice 'Bluetooth is ready. Unplug USB and send a PDF.\n\nYour regular Wi-Fi continues to handle internet access. Bluetooth is used only to reach BOOX. Next time, wake BOOX and enable Bluetooth tethering; the app reconnects automatically.\n\nAfter a BOOX reboot, repeat this USB setup if ADB stops working. Webpages still need internet on BOOX itself.' || true
+                    return 0
+                fi
+                connection_error='The Bluetooth device did not match the BOOX connected over USB, or settings could not be saved.'
+            else
+                connection_error="${connection_error:-}\n$output"
+            fi
+        fi
+        nmcli --wait 10 connection delete uuid "$network" >/dev/null 2>&1 || true
+        notice "Bluetooth setup did not finish. Check that BOOX supports Bluetooth tethering, that it is enabled, and that USB debugging is authorized. Your previous saved connection is unchanged.\n\n$connection_error" || return 1
+    done
 }
 
 # Called only on the saved network. Never trust a discovered address without
@@ -97,6 +229,19 @@ restore_connection() {
     local -a candidates=("$endpoint")
     local -A seen=()
     [[ -n $identity ]] || return 1
+    if [[ ${transport:-wifi} == bluetooth ]]; then
+        bluetooth_up && bluetooth_endpoint || return 1
+        state=$(timeout 5 adb -s "$endpoint" get-state 2>&1) || true
+        if [[ $state != device ]]; then
+            # Drop only this stale transport; preserve other ADB connections.
+            timeout 5 adb disconnect "$endpoint" >/dev/null 2>&1 || true
+            try_wireless || return 1
+        fi
+        actual=$(timeout 5 adb -s "$endpoint" shell getprop ro.serialno 2>/dev/null) || return 1
+        [[ ${actual//$'\r'/} == "$identity" ]] || return 1
+        save_connection || return 1
+        return 0
+    fi
     timeout 5 adb start-server >/dev/null 2>&1 || true
     while read -r service kind candidate extra; do
         [[ $kind == _adb-tls-connect._tcp || $kind == _adb-tls-connect._tcp. ]] || continue
@@ -128,18 +273,21 @@ setup_wireless() {
     wireless_tools
     local -a saved=() networks=()
     local network='' network_name uuid type name i mode answer ip address output identity temporary pairing code
-    local suggested='' endpoint=''
+    local suggested='' endpoint='' transport=wifi
     [[ ! -f $config ]] || mapfile -t saved < "$config"
     while :; do
-        networks=()
+        networks=(bluetooth 'Bluetooth — keep my regular Wi-Fi internet')
         while IFS=: read -r uuid type name; do
             case $type in 802-11-wireless|802-3-ethernet) networks+=("$uuid" "$name");; esac
         done < <(nmcli --escape no -t -f UUID,TYPE,NAME connection show --active)
-        (( ${#networks[@]} )) && break
-        notice 'Step 1 — Connect your computer to home Wi-Fi or Ethernet. Connect BOOX to the same network. Click OK to check again, or close this window to stop.' || return 1
+        network=$(choose 'Choose Bluetooth, or select a trusted Wi-Fi / Ethernet network shared with BOOX:' "${networks[@]}") || return 1
+        [[ -n $network ]] || return 1
+        if [[ $network == bluetooth ]]; then
+            setup_bluetooth && return 0
+            continue
+        fi
+        break
     done
-    network=$(choose 'Step 1 — Connect BOOX to the same trusted home network. Select the computer connection to use:' "${networks[@]}") || return 1
-    [[ -n $network ]] || return 1
     network_name=$network
     for ((i=0; i<${#networks[@]}; i+=2)); do
         [[ ${networks[i]} != "$network" ]] || network_name=${networks[i+1]}
@@ -288,18 +436,20 @@ while :; do
         wireless_tools
         mapfile -t settings < "$config"
         problem='Saved wireless settings are incomplete. Run connection setup again.'
-        if (( ${#settings[@]} == 3 )); then
-            network=${settings[0]} endpoint=${settings[1]} identity=${settings[2]}
+        if (( ${#settings[@]} == 3 || ${#settings[@]} == 4 )); then
+            network=${settings[0]} endpoint=${settings[1]} identity=${settings[2]} transport=${settings[3]:-wifi}
             active=$(nmcli -g UUID connection show --active) || active=''
             problem='Your saved home network is not active. Connect to it, use USB, or set up your current trusted network.'
-            if [[ $'\n'$active$'\n' == *$'\n'"$network"$'\n'* ]]; then
+            if [[ $transport == bluetooth || $'\n'$active$'\n' == *$'\n'"$network"$'\n'* ]]; then
                 problem='BOOX is not reachable. Wake it and check Wireless debugging. After reboot, USB setup may be needed, or the paired connection port may have changed.'
                 if restore_connection; then
                     serial=$endpoint
                     break
                 fi
                 problem='Your remembered BOOX was not found. Wake it, connect it to this home network, and turn on Wireless debugging. Then retry; its new address and port will be discovered automatically. If discovery is unavailable, open setup and enter its current connection address. USB-based setup on port 5555 may need USB again after reboot.'
-
+                if [[ $transport == bluetooth ]]; then
+                    problem='Bluetooth could not reach your remembered BOOX. Wake it, turn on Bluetooth and Bluetooth tethering, then retry. After a BOOX reboot, open setup and repeat Bluetooth USB setup. Your regular Wi-Fi can stay connected.'
+                fi
             fi
         fi
     fi
