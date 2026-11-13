@@ -1,5 +1,51 @@
 # Send to BOOX
 
+## macOS (USB and Wi-Fi)
+
+Install Android platform-tools using MacPorts or Homebrew (with Homebrew:
+`brew install --cask android-platform-tools`)
+and Apple's Command Line Tools (`xcode-select --install`), then run:
+
+```bash
+bash install-macos.sh
+```
+
+The installer builds a native app at `~/Applications/Send to BOOX.app`.
+Open it to send PDFs, send a webpage, or set up Wi-Fi. Drag PDFs onto the app
+in Finder or the Dock, or use Finder's **Open With → Other** to select it.
+The app does not change your default PDF reader. macOS 12 or later is required.
+ADB is found in MacPorts' `/opt/local/bin`, the usual Apple Silicon/Intel Homebrew locations, the Android
+SDK under your home folder, or your launch environment's PATH.
+
+For **USB**, connect only your BOOX with a data cable, enable USB Debug Mode,
+unlock it, and accept the debugging authorization prompt. USB takes priority.
+
+For **Wi-Fi**, open **Set up Wi-Fi** on the same trusted home network:
+
+- **USB setup** enables wireless ADB through the authorized cable and verifies
+  that the wireless device matches it before saving. Confirm the detected
+  address (port 5555); unplug USB after success.
+- **Wireless pairing** uses the pairing address and six-digit code in BOOX's
+  Android Wireless debugging screen, then asks for the separate connection
+  address on its main screen. Availability depends on BOOX firmware.
+- **Existing address** connects to an already authorized wireless ADB endpoint.
+
+The app remembers the BOOX serial and connection address in
+`~/Library/Application Support/Send to BOOX/wireless.json`. Before reconnecting,
+it asks you to confirm the trusted network, then verifies the device serial.
+ADB mDNS discovery can recover a changed paired connection port. If discovery
+is unavailable, rerun setup with the current address. After BOOX restarts,
+enable Wireless debugging again or repeat USB setup. Allow local network access
+if macOS requests it. Bluetooth is supported only by the Ubuntu version.
+
+PDFs are copied to `/sdcard/Books/`; matching filenames are overwritten.
+Webpages open in BOOX's browser and require internet on BOOX. A failed batch
+stops; files already copied remain. Rerun the installer to rebuild an update.
+Run mocked macOS checks with `bash macos/test.sh`. Actual BOOX transfers and
+Finder interactions require manual testing with your device.
+
+## Ubuntu
+
 Run once from this folder in your Ubuntu desktop session (not with `sudo`):
 
 ```bash
